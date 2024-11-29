@@ -16,8 +16,7 @@ import com.badlogic.gdx.physics.box2d.CircleShape
 import com.badlogic.gdx.physics.box2d.FixtureDef
 import com.badlogic.gdx.physics.box2d.Body
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer
-import com.badlogic.gdx.graphics.Color
-import kotlin.ranges.step
+import com.badlogic.gdx.utils.Array
 
 
 
@@ -48,7 +47,7 @@ class Main : ApplicationAdapter() {
         x: Float,
         y: Float,
         width: Float,
-        height: Float,
+        height: Float = 1f,
         density: Float = 1.0f,
         friction: Float = 0f,
         restitution: Float = 1f
@@ -115,6 +114,11 @@ class Main : ApplicationAdapter() {
         createBody("ball1", "circle", BodyType.DynamicBody, 0f, worldHeight/2*0.6f, 0.1f * worldWidth, 0.1f * worldWidth, 1f, 0f, 1000f)
     }
 
+    private fun testBall() {
+        createBody("testBall0", "circle", BodyType.StaticBody, 0f, 0f, 0.1f * worldWidth)
+        createBody("testBox0", "box", BodyType.StaticBody, 0.01f * worldWidth, 0.01f * worldWidth, 0.05f * worldWidth, 0.05f * worldWidth)
+    }
+
     private fun calculateGravitationalForce(bodyA: Body, bodyB: Body): Vector2 {
         val distance = bodyB.position.dst(bodyA.position)
         val forceMagnitude = G * (bodyA.mass * bodyB.mass) / (distance * distance)
@@ -123,33 +127,28 @@ class Main : ApplicationAdapter() {
     }
 
     private fun threeBodyProblem() {
-        // Create three bodies
-        val body1 = createBody("body1", "circle", BodyType.DynamicBody, -20f, 0f, 10f, 10f, 1f, 0f, 0f)
-        val body2 = createBody("body2", "circle", BodyType.DynamicBody, 20f, 0f, 10f, 10f, 1f, 0f, 0f)
-        val body3 = createBody("body3", "circle", BodyType.DynamicBody, 0f, 1f, 10f, 10f, 1f, 0f, 0f)
+        // Scale factor to make simulation visible on screen
+        val scale = worldWidth / 50f
 
-        // Initial velocities
-        body1.linearVelocity = Vector2(0f, 0.5f)
-        body2.linearVelocity = Vector2(0f, -0.5f)
-        body3.linearVelocity = Vector2(0.5f, 0f)
+        // Create boundaries
+//        createBody("bottom_edge", "box", BodyType.StaticBody, 0f, -worldHeight/2+1, worldWidth, 2f)
+//        createBody("top_edge", "box", BodyType.StaticBody, 0f, worldHeight/2-1, worldWidth, 2f)
+//        createBody("left_edge", "box", BodyType.StaticBody, -worldWidth/2+1, 0f, 2f, worldHeight)
+//        createBody("right_edge", "box", BodyType.StaticBody, worldWidth/2-1, 0f, 2f, worldHeight)
 
-        // Update loop
-        Gdx.app.postRunnable {
-            while (true) {
-                val force12 = calculateGravitationalForce(body1, body2)
-                val force13 = calculateGravitationalForce(body1, body3)
-                val force21 = calculateGravitationalForce(body2, body1)
-                val force23 = calculateGravitationalForce(body2, body3)
-                val force31 = calculateGravitationalForce(body3, body1)
-                val force32 = calculateGravitationalForce(body3, body2)
+        // Create bodies scaled to screen size
+        val body1 = createBody("body1", "circle", BodyType.DynamicBody, -5f * scale, 0f, scale, scale, 1f, 0f, 0f)
+        val body2 = createBody("body2", "circle", BodyType.DynamicBody, 5f * scale, 0f, scale, scale, 1f, 0f, 0f)
+        val body3 = createBody("body3", "circle", BodyType.DynamicBody, 0f, scale, scale, scale, 1f, 0f, 0f)
 
-                body1.applyForceToCenter(force12.add(force13), true)
-                body2.applyForceToCenter(force21.add(force23), true)
-                body3.applyForceToCenter(force31.add(force32), true)
+        // Set initial velocities
+        body1.linearVelocity = Vector2(0f, scale * 0.5f)
+        body2.linearVelocity = Vector2(0f, scale * -0.5f)
+        body3.linearVelocity = Vector2(scale * 0.5f, 0f)
 
-                world.step(1/60f, 6, 2)
-            }
-        }
+        bodies["body1"] = body1
+        bodies["body2"] = body2
+        bodies["body3"] = body3
     }
 
 
@@ -164,49 +163,78 @@ class Main : ApplicationAdapter() {
         debugRenderer = Box2DDebugRenderer()
         // Viewport size
         camera = OrthographicCamera(worldWidth, worldHeight)
+        camera.position.set(0f, 0f, 0f)
 
-        threeBodyProblem()
         shapeRenderer = ShapeRenderer()
         shapeRenderer.projectionMatrix = camera.combined
+//        testBall()
+        threeBodyProblem()
     }
 
     override fun render() {
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
         camera.update()
-
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled)
-        shapeRenderer.color = Color.RED
 
-        val bodyList = Array<Body>()
-        world.getBodies(bodyList)
+        for (body in bodies) {
+            val fixture = body.value.fixtureList.first()
+            shapeRenderer.color = if (body.key.startsWith("test")) {
+                com.badlogic.gdx.graphics.Color.BLUE
+            } else {
+                com.badlogic.gdx.graphics.Color.RED
+            }
 
-        for (body in bodyList) {
-            val fixture = body.fixtureList.first
             when (fixture.shape) {
                 is CircleShape -> {
-                    val pos = body.position
+                    val pos = body.value.position
                     val radius = fixture.shape.radius
                     shapeRenderer.circle(
-                        pos.x + worldWidth/2,
-                        pos.y + worldHeight/2,
+                        pos.x,  // Remove worldWidth/2
+                        pos.y,  // Remove worldHeight/2
                         radius
                     )
                 }
                 is PolygonShape -> {
                     val shape = fixture.shape as PolygonShape
-                    val vertices = Array(shape.vertexCount) { Vector2() }
-                    for (i in 0 until shape.vertexCount) {
-                        shape.getVertex(i, vertices[i])
-                        vertices[i].rotate(Math.toDegrees(body.angle.toDouble()).toFloat())
-                        vertices[i].add(body.position)
-                        vertices[i].add(worldWidth/2, worldHeight/2)
+                    val vertexCount = shape.vertexCount
+                    val vertices = Array<Vector2>(vertexCount)
+
+                    for (i in 0 until vertexCount) {
+                        vertices.add(Vector2())
+                        shape.getVertex(i, vertices.get(i))
+                        vertices.get(i).rotate(Math.toDegrees(body.value.angle.toDouble()).toFloat())
+                        vertices.get(i).add(body.value.position)
+                        // Remove the worldWidth/2 and worldHeight/2 additions
                     }
-                    shapeRenderer.polygon(vertices.map { it.x }.toFloatArray(),
-                        vertices.map { it.y }.toFloatArray())
+
+                    for (i in 1 until vertexCount - 1) {
+                        shapeRenderer.triangle(
+                            vertices.get(0).x, vertices.get(0).y,
+                            vertices.get(i).x, vertices.get(i).y,
+                            vertices.get(i + 1).x, vertices.get(i + 1).y
+                        )
+                    }
                 }
             }
         }
         shapeRenderer.end()
+        // Update physics for three body problem
+        this@Main.bodies["body1"]?.let { body1 ->
+            this@Main.bodies["body2"]?.let { body2 ->
+                this@Main.bodies["body3"]?.let { body3 ->
+                    val force12 = calculateGravitationalForce(body1, body2)
+                    val force13 = calculateGravitationalForce(body1, body3)
+                    val force21 = calculateGravitationalForce(body2, body1)
+                    val force23 = calculateGravitationalForce(body2, body3)
+                    val force31 = calculateGravitationalForce(body3, body1)
+                    val force32 = calculateGravitationalForce(body3, body2)
+
+                    body1.applyForceToCenter(force12.add(force13.cpy()), true)
+                    body2.applyForceToCenter(force21.add(force23.cpy()), true)
+                    body3.applyForceToCenter(force31.add(force32.cpy()), true)
+                }
+            }
+        }
 
         world.step(1/60f, 6, 2)
     }
